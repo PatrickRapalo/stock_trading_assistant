@@ -611,6 +611,70 @@ function generateRecommendation(direction, confidence, confirmations) {
     };
 }
 
+// Generate future price predictions
+function generatePricePredictions(indicators, numPeriods) {
+    const predictions = [];
+    const currentPrice = indicators.currentPrice;
+    
+    // Calculate expected price movement per period based on indicators
+    let momentumFactor = indicators.momentum / 100;  // Convert % to decimal
+    let trendFactor = 0;
+    
+    // Determine trend strength
+    if (indicators.currentPrice > indicators.sma20 && indicators.sma20 > indicators.sma50) {
+        trendFactor = 0.002;  // Bullish trend adds 0.2% per period
+    } else if (indicators.currentPrice < indicators.sma20 && indicators.sma20 < indicators.sma50) {
+        trendFactor = -0.002;  // Bearish trend subtracts 0.2% per period
+    }
+    
+    // RSI influence
+    let rsiFactor = 0;
+    if (indicators.rsi > 70) {
+        rsiFactor = -0.001;  // Overbought, expect pullback
+    } else if (indicators.rsi < 30) {
+        rsiFactor = 0.001;  // Oversold, expect bounce
+    } else {
+        rsiFactor = (indicators.rsi - 50) / 10000;  // Gradual influence
+    }
+    
+    // MACD influence
+    let macdFactor = 0;
+    if (indicators.macdHistogram > 0) {
+        macdFactor = 0.001;  // Positive momentum
+    } else {
+        macdFactor = -0.001;  // Negative momentum
+    }
+    
+    // Combined factor (with some decay over time)
+    let combinedFactor = momentumFactor * 0.02 + trendFactor + rsiFactor + macdFactor;
+    
+    // Generate predictions with diminishing accuracy
+    let price = currentPrice;
+    for (let i = 1; i <= numPeriods; i++) {
+        // Add some mean reversion (prices tend to revert to moving average)
+        const meanReversionFactor = (indicators.sma20 - price) * 0.01;
+        
+        // Calculate next price with decay
+        const decay = 1 - (i * 0.05);  // Confidence decays over time
+        const adjustment = (combinedFactor + meanReversionFactor) * decay;
+        
+        price = price * (1 + adjustment);
+        
+        // Add upper and lower bounds (confidence interval)
+        const volatility = Math.abs(indicators.currentPrice - indicators.sma20) / indicators.sma20;
+        const confidenceRange = price * volatility * i * 0.3;
+        
+        predictions.push({
+            period: i,
+            price: price,
+            upper: price + confidenceRange,
+            lower: price - confidenceRange
+        });
+    }
+    
+    return predictions;
+}
+
 // Render results
 function renderResults(ticker, prediction, indicators, data, interval) {
     const resultsDiv = document.getElementById('results');
@@ -632,9 +696,38 @@ function renderResults(ticker, prediction, indicators, data, interval) {
                        interval === '30m' ? '30-Minute' :
                        interval === '60m' ? '1-Hour' : 'Daily';
     
-    resultsDiv.innerHTML = '<div class="prediction-card"><div class="prediction-header"><div><h2>Prediction for ' + ticker.toUpperCase() + ' (' + timeframeDesc + ')</h2><div class="direction ' + directionClass + '">' + prediction.direction + '</div></div><div class="confidence">' + prediction.confidence + '% Confidence</div></div><div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #0ea5e9;"><strong style="color: #0369a1; font-size: 1.2em;">Recommendation: ' + prediction.recommendation.action + '</strong><br><span style="color: #0c4a6e; margin-top: 8px; display: block;">' + prediction.recommendation.reasoning + '</span></div><div class="reasoning"><h3>AI Reasoning (Score: ' + prediction.score.toFixed(1) + ' | Confirmations: ' + prediction.confirmations + ')</h3>' + reasonsHTML + '</div></div><div class="chart-container"><canvas id="priceChart"></canvas></div><div class="metrics"><div class="metric-card"><div class="metric-value">$' + indicators.currentPrice.toFixed(2) + '</div><div class="metric-label">Current Price</div></div><div class="metric-card"><div class="metric-value">' + indicators.rsi.toFixed(1) + '</div><div class="metric-label">RSI (14)</div></div><div class="metric-card"><div class="metric-value">' + indicators.momentum.toFixed(2) + '%</div><div class="metric-label">5-Period Momentum</div></div><div class="metric-card"><div class="metric-value">' + (indicators.volumeRatio * 100).toFixed(0) + '%</div><div class="metric-label">Volume vs Avg</div></div></div>';
+    resultsDiv.innerHTML = 
+        '<div class="prediction-card">' +
+        '<div class="prediction-header">' +
+        '<div><h2>Prediction for ' + ticker.toUpperCase() + ' (' + timeframeDesc + ')</h2>' +
+        '<div class="direction ' + directionClass + '">' + prediction.direction + '</div></div>' +
+        '<div class="confidence">' + prediction.confidence + '% Confidence</div>' +
+        '</div>' +
+        '<div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #0ea5e9;">' +
+        '<strong style="color: #0369a1; font-size: 1.2em;">Recommendation: ' + prediction.recommendation.action + '</strong><br>' +
+        '<span style="color: #0c4a6e; margin-top: 8px; display: block;">' + prediction.recommendation.reasoning + '</span>' +
+        '</div>' +
+        '<div class="reasoning"><h3>AI Reasoning (Score: ' + prediction.score.toFixed(1) + ' | Confirmations: ' + prediction.confirmations + ')</h3>' +
+        reasonsHTML +
+        '</div>' +
+        '</div>' +
+        '<div class="chart-container">' +
+        '<h3 style="margin-bottom: 15px;">Historical Price & Moving Averages</h3>' +
+        '<canvas id="priceChart"></canvas>' +
+        '</div>' +
+        '<div class="chart-container">' +
+        '<h3 style="margin-bottom: 15px;">AI Price Prediction (Next 10 Periods)</h3>' +
+        '<canvas id="predictionChart"></canvas>' +
+        '</div>' +
+        '<div class="metrics">' +
+        '<div class="metric-card"><div class="metric-value">$' + indicators.currentPrice.toFixed(2) + '</div><div class="metric-label">Current Price</div></div>' +
+        '<div class="metric-card"><div class="metric-value">' + indicators.rsi.toFixed(1) + '</div><div class="metric-label">RSI (14)</div></div>' +
+        '<div class="metric-card"><div class="metric-value">' + indicators.momentum.toFixed(2) + '%</div><div class="metric-label">5-Period Momentum</div></div>' +
+        '<div class="metric-card"><div class="metric-value">' + (indicators.volumeRatio * 100).toFixed(0) + '%</div><div class="metric-label">Volume vs Avg</div></div>' +
+        '</div>';
     
     renderChart(data, indicators, interval);
+    renderPredictionChart(indicators, interval);
 }
 
 // Render chart
@@ -720,6 +813,125 @@ function renderChart(data, indicators, interval) {
     });
 }
 
+// Render prediction chart
+function renderPredictionChart(indicators, interval) {
+    const ctx = document.getElementById('predictionChart').getContext('2d');
+    
+    // Generate predictions for next 10 periods
+    const predictions = generatePricePredictions(indicators, 10);
+    
+    const labels = ['Now'];
+    const predictedPrices = [indicators.currentPrice];
+    const upperBound = [indicators.currentPrice];
+    const lowerBound = [indicators.currentPrice];
+    
+    predictions.forEach(function(pred) {
+        labels.push('T+' + pred.period);
+        predictedPrices.push(pred.price);
+        upperBound.push(pred.upper);
+        lowerBound.push(pred.lower);
+    });
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Current Price',
+                    data: [indicators.currentPrice, null, null, null, null, null, null, null, null, null, null],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.3)',
+                    borderWidth: 3,
+                    pointRadius: 6,
+                    pointHoverRadius: 8,
+                    fill: false
+                },
+                {
+                    label: 'AI Predicted Price',
+                    data: predictedPrices,
+                    borderColor: '#ec4899',
+                    backgroundColor: 'rgba(236, 72, 153, 0.1)',
+                    borderWidth: 3,
+                    borderDash: [5, 5],
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 4
+                },
+                {
+                    label: 'Upper Confidence Band',
+                    data: upperBound,
+                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    borderWidth: 1,
+                    borderDash: [2, 2],
+                    tension: 0.3,
+                    fill: '+1',
+                    pointRadius: 0
+                },
+                {
+                    label: 'Lower Confidence Band',
+                    data: lowerBound,
+                    borderColor: 'rgba(34, 197, 94, 0.3)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.05)',
+                    borderWidth: 1,
+                    borderDash: [2, 2],
+                    tension: 0.3,
+                    fill: '-1',
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top'
+                },
+                title: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += '$' + context.parsed.y.toFixed(2);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time Periods Ahead (' + interval + ' intervals)'
+                    }
+                },
+                y: {
+                    beginAtZero: false,
+                    title: {
+                        display: true,
+                        text: 'Predicted Price'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 // Main analysis function
 window.analyze = async function() {
     console.log('Analyze button clicked!');
@@ -735,7 +947,15 @@ window.analyze = async function() {
     console.log('Timeframe:', timeframe);
     
     if (!ticker || !timeframe || !resultsDiv || !analyzeBtn) {
-        resultsDiv.innerHTML = '<div class="error"><strong>Debug Info:</strong><br>Ticker found: ' + (ticker ? 'YES (' + ticker + ')' : 'NO') + '<br>Timeframe found: ' + (timeframe ? 'YES (' + timeframe + ')' : 'NO') + '<br>Results div found: ' + (resultsDiv ? 'YES' : 'NO') + '<br>Button found: ' + (analyzeBtn ? 'YES' : 'NO') + '<br><br>Please refresh the page and try again.</div>';
+        resultsDiv.innerHTML = 
+            '<div class="error">' +
+            '<strong>Debug Info:</strong><br>' +
+            'Ticker found: ' + (ticker ? 'YES (' + ticker + ')' : 'NO') + '<br>' +
+            'Timeframe found: ' + (timeframe ? 'YES (' + timeframe + ')' : 'NO') + '<br>' +
+            'Results div found: ' + (resultsDiv ? 'YES' : 'NO') + '<br>' +
+            'Button found: ' + (analyzeBtn ? 'YES' : 'NO') + '<br><br>' +
+            'Please refresh the page and try again.' +
+            '</div>';
         return;
     }
     
@@ -750,7 +970,15 @@ window.analyze = async function() {
     
     analyzeBtn.disabled = true;
     analyzeBtn.textContent = 'Analyzing...';
-    resultsDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div style="margin-top: 20px; font-size: 1.1em; font-weight: 600;">Analyzing ' + ticker + '...</div><div style="margin-top: 10px; color: #764ba2;"><div>Fetching ' + interval + ' interval data from Yahoo Finance...</div><div style="margin-top: 5px;">This may take 5-15 seconds...</div></div></div>';
+    resultsDiv.innerHTML = 
+        '<div class="loading">' +
+        '<div class="spinner"></div>' +
+        '<div style="margin-top: 20px; font-size: 1.1em; font-weight: 600;">Analyzing ' + ticker + '...</div>' +
+        '<div style="margin-top: 10px; color: #764ba2;">' +
+        '<div>Fetching ' + interval + ' interval data from Yahoo Finance...</div>' +
+        '<div style="margin-top: 5px;">This may take 5-15 seconds...</div>' +
+        '</div>' +
+        '</div>';
     
     try {
         console.log('Fetching ' + interval + ' data for ' + ticker + ' (range: ' + range + ')...');
@@ -774,7 +1002,15 @@ window.analyze = async function() {
         
     } catch (error) {
         console.error('Error:', error);
-        resultsDiv.innerHTML = '<div class="error"><strong>Error:</strong> ' + error.message + '<br><br><strong>Details:</strong><br>Ticker: ' + ticker + '<br>Range: ' + range + '<br>Interval: ' + interval + '<br><br>Try selecting a different timeframe or stock.</div>';
+        resultsDiv.innerHTML = 
+            '<div class="error">' +
+            '<strong>Error:</strong> ' + error.message + '<br><br>' +
+            '<strong>Details:</strong><br>' +
+            'Ticker: ' + ticker + '<br>' +
+            'Range: ' + range + '<br>' +
+            'Interval: ' + interval + '<br><br>' +
+            'Try selecting a different timeframe or stock.' +
+            '</div>';
     } finally {
         analyzeBtn.disabled = false;
         analyzeBtn.textContent = 'Analyze Stock';
