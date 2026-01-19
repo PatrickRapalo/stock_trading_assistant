@@ -1,4 +1,5 @@
 // AI Trading Assistant - Main Application Logic
+console.log(‘✅ Trading Assistant script loaded successfully!’);
 
 let stockData = null;
 let technicalIndicators = null;
@@ -607,18 +608,32 @@ new Chart(ctx, {
 }
 
 // Main analysis function
-async function analyze() {
-const tickerSelect = document.getElementById(‘ticker’);
-const ticker = tickerSelect.value; // Get the value attribute, not the text
-const timeframe = document.getElementById(‘timeframe’).value;
-const resultsDiv = document.getElementById(‘results’);
-const analyzeBtn = document.getElementById(‘analyzeBtn’);
+window.analyze = async function() {
+alert(‘Button clicked! Check console for details.’);
+console.log(‘🚀 Analyze button clicked!’);
 
 ```
+const tickerSelect = document.getElementById('ticker');
+const ticker = tickerSelect ? tickerSelect.value : 'NOT FOUND'; 
+const timeframeSelect = document.getElementById('timeframe');
+const timeframe = timeframeSelect ? timeframeSelect.value : 'NOT FOUND';
+const resultsDiv = document.getElementById('results');
+const analyzeBtn = document.getElementById('analyzeBtn');
+
+console.log('Ticker element:', tickerSelect);
+console.log('Ticker value:', ticker);
+console.log('Timeframe element:', timeframeSelect);
+console.log('Timeframe value:', timeframe);
+console.log('Results div:', resultsDiv);
+console.log('Button:', analyzeBtn);
+
 // Parse timeframe (format: "range|interval")
 const [range, interval] = timeframe.split('|');
 
-if (!ticker) {
+console.log('Range:', range, 'Interval:', interval);
+
+if (!ticker || ticker === 'NOT FOUND') {
+    alert('Ticker element not found!');
     resultsDiv.innerHTML = '<div class="error">Please select a stock ticker symbol.</div>';
     return;
 }
@@ -663,6 +678,7 @@ try {
     
 } catch (error) {
     console.error('❌ Error:', error);
+    alert('Error: ' + error.message);
     resultsDiv.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
 } finally {
     analyzeBtn.disabled = false;
