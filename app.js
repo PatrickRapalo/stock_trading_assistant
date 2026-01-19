@@ -573,7 +573,8 @@ new Chart(ctx, {
 
 // Main analysis function
 async function analyze() {
-const ticker = document.getElementById(‘ticker’).value;
+const tickerSelect = document.getElementById(‘ticker’);
+const ticker = tickerSelect.value; // Get the value attribute, not the text
 const timeframe = document.getElementById(‘timeframe’).value;
 const resultsDiv = document.getElementById(‘results’);
 const analyzeBtn = document.getElementById(‘analyzeBtn’);
@@ -589,34 +590,48 @@ if (!ticker) {
 
 // Show loading
 analyzeBtn.disabled = true;
+analyzeBtn.textContent = 'Analyzing...';
 resultsDiv.innerHTML = `
     <div class="loading">
         <div class="spinner"></div>
-        <div>Fetching ${interval} data for ${ticker}...</div>
+        <div style="margin-top: 20px; font-size: 1.1em; font-weight: 600;">Analyzing ${ticker}...</div>
+        <div style="margin-top: 10px; color: #764ba2;">
+            <div>⏳ Fetching ${interval} interval data from Yahoo Finance...</div>
+            <div style="margin-top: 5px;">📊 This may take 5-15 seconds...</div>
+        </div>
     </div>
 `;
 
 try {
     // Fetch data
+    console.log(`🔍 Fetching ${interval} data for ${ticker} (range: ${range})...`);
     stockData = await fetchStockData(ticker, range, interval);
+    console.log(`✅ Received ${stockData.length} data points`);
     
     if (stockData.length < 50) {
         throw new Error(`Not enough data points (${stockData.length}). Try a longer timeframe.`);
     }
     
     // Calculate indicators
+    console.log('📊 Calculating technical indicators...');
     technicalIndicators = calculateIndicators(stockData);
+    console.log('✅ Indicators calculated:', technicalIndicators);
     
     // Get prediction
+    console.log('🤖 Generating AI prediction...');
     const prediction = predictDirection(technicalIndicators);
+    console.log('✅ Prediction complete:', prediction);
     
     // Render results
     renderResults(ticker, prediction, technicalIndicators, stockData, interval);
+    console.log('✅ Results rendered successfully');
     
 } catch (error) {
+    console.error('❌ Error:', error);
     resultsDiv.innerHTML = `<div class="error"><strong>Error:</strong> ${error.message}</div>`;
 } finally {
     analyzeBtn.disabled = false;
+    analyzeBtn.textContent = 'Analyze Stock';
 }
 ```
 
