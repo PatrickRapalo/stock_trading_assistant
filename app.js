@@ -5,38 +5,73 @@ let technicalIndicators = null;
 
 // Fetch historical stock data from Yahoo Finance (via proxy)
 async function fetchStockData(ticker, range = ‘1d’, interval = ‘2m’) {
-try {
-// Using a CORS proxy to access Yahoo Finance
-const proxy = ‘https://api.allorigins.win/raw?url=’;
-const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
+// Multiple CORS proxies as fallbacks
+const proxies = [
+‘https://api.allorigins.win/raw?url=’,
+‘https://corsproxy.io/?’,
+‘https://api.codetabs.com/v1/proxy?quest=’
+];
 
 ```
-    const response = await fetch(proxy + encodeURIComponent(yahooUrl));
-    const data = await response.json();
-    
-    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-        throw new Error('No data found for this ticker');
+const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=${interval}&range=${range}`;
+
+let lastError = null;
+
+// Try each proxy
+for (let i = 0; i < proxies.length; i++) {
+    try {
+        console.log(`Attempt ${i + 1}: Using proxy ${i + 1}...`);
+        const proxyUrl = proxies[i] + encodeURIComponent(yahooUrl);
+        
+        const response = await fetch(proxyUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+            throw new Error('No data found for this ticker');
+        }
+        
+        const result = data.chart.result[0];
+        
+        if (!result.timestamp || !result.indicators || !result.indicators.quote) {
+            throw new Error('Invalid data format from Yahoo Finance');
+        }
+        
+        const timestamps = result.timestamp;
+        const quotes = result.indicators.quote[0];
+        
+        // Format data
+        const formattedData = timestamps.map((timestamp, index) => ({
+            date: new Date(timestamp * 1000),
+            open: quotes.open[index],
+            high: quotes.high[index],
+            low: quotes.low[index],
+            close: quotes.close[index],
+            volume: quotes.volume[index]
+        })).filter(d => d.close !== null && d.close !== undefined);
+        
+        console.log(`✅ Success with proxy ${i + 1}`);
+        return formattedData;
+        
+    } catch (error) {
+        console.warn(`Proxy ${i + 1} failed:`, error.message);
+        lastError = error;
+        // Continue to next proxy
     }
-    
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    
-    // Format data
-    const formattedData = timestamps.map((timestamp, index) => ({
-        date: new Date(timestamp * 1000),
-        open: quotes.open[index],
-        high: quotes.high[index],
-        low: quotes.low[index],
-        close: quotes.close[index],
-        volume: quotes.volume[index]
-    })).filter(d => d.close !== null);
-    
-    return formattedData;
-} catch (error) {
-    console.error('Error fetching data:', error);
-    throw new Error('Failed to fetch stock data. Please check the ticker symbol and try again.');
 }
+
+// All proxies failed
+console.error('All proxies failed:', lastError);
+throw new Error(`Failed to fetch stock data after trying ${proxies.length} proxies. The service may be temporarily unavailable. Error: ${lastError?.message || 'Unknown error'}`);
 ```
 
 }
