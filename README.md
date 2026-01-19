@@ -1,5 +1,7 @@
 # 📈 AI Trading Assistant Demo
 
+[Link to Demo](https://patrickrapalo.github.io/stock_trading_assistant/)
+
 An educational stock analysis tool that provides directional predictions with clear, transparent reasoning based on technical indicators.
 
 ## 🎯 Features
