@@ -1018,3 +1018,101 @@ window.analyze = async function() {
 }
 
 console.log('All functions loaded successfully!');
+
+// Auto-refresh system
+let autoRefreshEnabled = false;
+let autoRefreshInterval = 60; // seconds
+let autoRefreshTimer = null;
+let countdownTimer = null;
+let nextRefreshTime = null;
+
+window.toggleAutoRefresh = function() {
+    autoRefreshEnabled = !autoRefreshEnabled;
+    const btn = document.getElementById('toggleAutoRefresh');
+    const statusText = document.getElementById('refreshStatus');
+    
+    if (autoRefreshEnabled) {
+        btn.textContent = 'Disable Auto-Refresh';
+        btn.classList.add('active');
+        statusText.textContent = 'Auto-refresh: ON';
+        startAutoRefresh();
+    } else {
+        btn.textContent = 'Enable Auto-Refresh';
+        btn.classList.remove('active');
+        statusText.textContent = 'Auto-refresh: OFF';
+        stopAutoRefresh();
+    }
+}
+
+function startAutoRefresh() {
+    // Clear any existing timers
+    stopAutoRefresh();
+    
+    // Set next refresh time
+    nextRefreshTime = Date.now() + (autoRefreshInterval * 1000);
+    
+    // Start countdown display
+    updateCountdown();
+    countdownTimer = setInterval(updateCountdown, 1000);
+    
+    // Schedule next analysis
+    autoRefreshTimer = setTimeout(function() {
+        if (autoRefreshEnabled) {
+            console.log('Auto-refresh triggered');
+            analyze();
+            startAutoRefresh(); // Reschedule
+        }
+    }, autoRefreshInterval * 1000);
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+    document.getElementById('countdown').textContent = '';
+}
+
+function updateCountdown() {
+    if (!autoRefreshEnabled || !nextRefreshTime) {
+        return;
+    }
+    
+    const now = Date.now();
+    const remaining = Math.max(0, Math.ceil((nextRefreshTime - now) / 1000));
+    
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    
+    const display = minutes > 0 
+        ? minutes + 'm ' + seconds + 's'
+        : seconds + 's';
+    
+    document.getElementById('countdown').textContent = 'Next refresh in: ' + display;
+}
+
+window.updateRefreshInterval = function() {
+    const select = document.getElementById('refreshInterval');
+    autoRefreshInterval = parseInt(select.value);
+    
+    // If auto-refresh is running, restart with new interval
+    if (autoRefreshEnabled) {
+        startAutoRefresh();
+    }
+    
+    console.log('Refresh interval updated to: ' + autoRefreshInterval + ' seconds');
+}
+
+// Stop auto-refresh when user manually analyzes
+const originalAnalyze = window.analyze;
+window.analyze = async function() {
+    // If this is a manual click (not auto-refresh), reset the timer
+    if (autoRefreshEnabled && !arguments[0]) {
+        startAutoRefresh(); // Reset the countdown
+    }
+    return originalAnalyze();
+};
