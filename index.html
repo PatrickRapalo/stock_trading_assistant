@@ -286,6 +286,47 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
+        .interactive-chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .chart-type-btn {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .chart-type-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .chart-type-btn.active {
+            background: #667eea;
+            border-color: #667eea;
+            color: white;
+        }
+
+        #interactiveChart {
+            height: 500px;
+            width: 100%;
+        }
+
         .metrics {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -328,6 +369,28 @@
             border-radius: 8px;
             margin-top: 20px;
             font-size: 0.9em;
+        }
+
+        .chart-type-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+
+        .chart-type-btn:hover {
+            background: #f0f4ff;
+        }
+
+        .chart-type-btn.active {
+            background: #667eea;
+            color: white;
         }
     </style>
 </head>
@@ -447,6 +510,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
