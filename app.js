@@ -611,6 +611,211 @@ function generateRecommendation(direction, confidence, confirmations) {
     };
 }
 
+// Interactive Chart Variables
+let interactiveChart = null;
+let candlestickSeries = null;
+let lineSeries = null;
+let areaSeries = null;
+let currentChartType = 'candlestick';
+let chartData = null;
+
+// Render interactive chart with zoom and pan
+function renderInteractiveChart(data, indicators) {
+    const container = document.getElementById('interactiveChart');
+    
+    // Clear existing chart
+    if (interactiveChart) {
+        interactiveChart.remove();
+    }
+    
+    // Create new chart
+    interactiveChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 500,
+        layout: {
+            background: { color: '#ffffff' },
+            textColor: '#333',
+        },
+        grid: {
+            vertLines: { color: '#f0f0f0' },
+            horzLines: { color: '#f0f0f0' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: '#cccccc',
+        },
+        timeScale: {
+            borderColor: '#cccccc',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+    
+    // Store data for chart type switching
+    chartData = {
+        raw: data,
+        indicators: indicators
+    };
+    
+    // Add candlestick series by default
+    switchToChartType('candlestick');
+    
+    // Add moving averages
+    addMovingAverages(indicators);
+    
+    // Make chart responsive
+    window.addEventListener('resize', function() {
+        if (interactiveChart && container) {
+            interactiveChart.applyOptions({ width: container.clientWidth });
+        }
+    });
+}
+
+// Switch chart type
+window.switchChartType = function(type) {
+    if (!interactiveChart || !chartData) return;
+    
+    currentChartType = type;
+    
+    // Update button states
+    const buttons = document.querySelectorAll('.chart-type-btn');
+    buttons.forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    switchToChartType(type);
+}
+
+function switchToChartType(type) {
+    if (!interactiveChart || !chartData) return;
+    
+    // Remove existing series
+    if (candlestickSeries) {
+        interactiveChart.removeSeries(candlestickSeries);
+        candlestickSeries = null;
+    }
+    if (lineSeries) {
+        interactiveChart.removeSeries(lineSeries);
+        lineSeries = null;
+    }
+    if (areaSeries) {
+        interactiveChart.removeSeries(areaSeries);
+        areaSeries = null;
+    }
+    
+    const data = chartData.raw;
+    
+    if (type === 'candlestick') {
+        // Candlestick chart
+        candlestickSeries = interactiveChart.addCandlestickSeries({
+            upColor: '#26a69a',
+            downColor: '#ef5350',
+            borderVisible: false,
+            wickUpColor: '#26a69a',
+            wickDownColor: '#ef5350',
+        });
+        
+        const candleData = data.map(function(d) {
+            return {
+                time: d.date.getTime() / 1000,
+                open: d.open,
+                high: d.high,
+                low: d.low,
+                close: d.close
+            };
+        });
+        
+        candlestickSeries.setData(candleData);
+        
+    } else if (type === 'line') {
+        // Line chart
+        lineSeries = interactiveChart.addLineSeries({
+            color: '#667eea',
+            lineWidth: 2,
+        });
+        
+        const lineData = data.map(function(d) {
+            return {
+                time: d.date.getTime() / 1000,
+                value: d.close
+            };
+        });
+        
+        lineSeries.setData(lineData);
+        
+    } else if (type === 'area') {
+        // Area chart
+        areaSeries = interactiveChart.addAreaSeries({
+            topColor: 'rgba(102, 126, 234, 0.4)',
+            bottomColor: 'rgba(102, 126, 234, 0.0)',
+            lineColor: '#667eea',
+            lineWidth: 2,
+        });
+        
+        const areaData = data.map(function(d) {
+            return {
+                time: d.date.getTime() / 1000,
+                value: d.close
+            };
+        });
+        
+        areaSeries.setData(areaData);
+    }
+    
+    // Re-add moving averages
+    addMovingAverages(chartData.indicators);
+}
+
+function addMovingAverages(indicators) {
+    if (!interactiveChart || !chartData) return;
+    
+    const data = chartData.raw;
+    
+    // Add 20-period SMA
+    const sma20Series = interactiveChart.addLineSeries({
+        color: '#f59e0b',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    
+    const sma20Data = [];
+    for (let i = 0; i < data.length; i++) {
+        if (indicators.sma20Full[i] !== null) {
+            sma20Data.push({
+                time: data[i].date.getTime() / 1000,
+                value: indicators.sma20Full[i]
+            });
+        }
+    }
+    sma20Series.setData(sma20Data);
+    
+    // Add 50-period SMA
+    const sma50Series = interactiveChart.addLineSeries({
+        color: '#10b981',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+    });
+    
+    const sma50Data = [];
+    for (let i = 0; i < data.length; i++) {
+        if (indicators.sma50Full[i] !== null) {
+            sma50Data.push({
+                time: data[i].date.getTime() / 1000,
+                value: indicators.sma50Full[i]
+            });
+        }
+    }
+    sma50Series.setData(sma50Data);
+    
+    // Fit content to show all data
+    interactiveChart.timeScale().fitContent();
+}
+
 // Generate future price predictions
 function generatePricePredictions(indicators, numPeriods) {
     const predictions = [];
@@ -711,9 +916,28 @@ function renderResults(ticker, prediction, indicators, data, interval) {
         reasonsHTML +
         '</div>' +
         '</div>' +
+        '<div class="interactive-chart-container">' +
+        '<h3 style="margin-bottom: 15px;">Interactive Price Chart</h3>' +
+        '<div class="chart-controls">' +
+        '<button class="chart-type-btn active" onclick="switchChartType(\'candlestick\')">Candlestick</button>' +
+        '<button class="chart-type-btn" onclick="switchChartType(\'line\')">Line</button>' +
+        '<button class="chart-type-btn" onclick="switchChartType(\'area\')">Area</button>' +
+        '<span style="margin-left: auto; color: #666; font-size: 0.9em;">Scroll to zoom • Drag to pan • Click to crosshair</span>' +
+        '</div>' +
+        '<div id="interactiveChart"></div>' +
+        '</div>' +
         '<div class="chart-container">' +
-        '<h3 style="margin-bottom: 15px;">Historical Price & Moving Averages</h3>' +
+        '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">' +
+        '<h3 style="margin: 0;">Historical Price & Moving Averages</h3>' +
+        '<div>' +
+        '<button onclick="switchChartType(\'line\')" id="lineChartBtn" class="chart-type-btn active">Line Chart</button>' +
+        '<button onclick="switchChartType(\'candlestick\')" id="candlestickChartBtn" class="chart-type-btn">Candlestick Chart</button>' +
+        '</div>' +
+        '</div>' +
+        '<div id="lineChartContainer" style="display: block;">' +
         '<canvas id="priceChart"></canvas>' +
+        '</div>' +
+        '<div id="candlestickContainer" style="display: none; height: 500px;"></div>' +
         '</div>' +
         '<div class="chart-container">' +
         '<h3 style="margin-bottom: 15px;">AI Price Prediction (Next 10 Periods)</h3>' +
@@ -726,7 +950,9 @@ function renderResults(ticker, prediction, indicators, data, interval) {
         '<div class="metric-card"><div class="metric-value">' + (indicators.volumeRatio * 100).toFixed(0) + '%</div><div class="metric-label">Volume vs Avg</div></div>' +
         '</div>';
     
+    renderInteractiveChart(data, indicators);
     renderChart(data, indicators, interval);
+    renderCandlestickChart(data, indicators, interval);
     renderPredictionChart(indicators, interval);
 }
 
@@ -822,6 +1048,142 @@ function renderChart(data, indicators, interval) {
             }
         }
     });
+}
+
+// Global variable to store chart instance
+let candlestickChartInstance = null;
+
+// Render interactive candlestick chart with pan/zoom
+function renderCandlestickChart(data, indicators, interval) {
+    const container = document.getElementById('candlestickContainer');
+    
+    // Clear previous chart
+    container.innerHTML = '';
+    
+    // Create new chart
+    const chart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: 500,
+        layout: {
+            background: { color: '#ffffff' },
+            textColor: '#333',
+        },
+        grid: {
+            vertLines: { color: '#f0f0f0' },
+            horzLines: { color: '#f0f0f0' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: '#cccccc',
+        },
+        timeScale: {
+            borderColor: '#cccccc',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+    
+    candlestickChartInstance = chart;
+    
+    // Add candlestick series
+    const candlestickSeries = chart.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350',
+    });
+    
+    // Format data for candlestick chart
+    const candlestickData = data.map(function(d) {
+        return {
+            time: Math.floor(d.date.getTime() / 1000),
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close
+        };
+    });
+    
+    candlestickSeries.setData(candlestickData);
+    
+    // Add 20-period SMA line
+    const sma20Series = chart.addLineSeries({
+        color: '#f59e0b',
+        lineWidth: 2,
+        title: '20-SMA',
+    });
+    
+    const sma20Data = [];
+    for (let i = 0; i < data.length; i++) {
+        if (indicators.sma20Full[i] !== null) {
+            sma20Data.push({
+                time: Math.floor(data[i].date.getTime() / 1000),
+                value: indicators.sma20Full[i]
+            });
+        }
+    }
+    sma20Series.setData(sma20Data);
+    
+    // Add 50-period SMA line
+    const sma50Series = chart.addLineSeries({
+        color: '#10b981',
+        lineWidth: 2,
+        title: '50-SMA',
+    });
+    
+    const sma50Data = [];
+    for (let i = 0; i < data.length; i++) {
+        if (indicators.sma50Full[i] !== null) {
+            sma50Data.push({
+                time: Math.floor(data[i].date.getTime() / 1000),
+                value: indicators.sma50Full[i]
+            });
+        }
+    }
+    sma50Series.setData(sma50Data);
+    
+    // Auto-resize chart
+    window.addEventListener('resize', function() {
+        if (candlestickChartInstance) {
+            candlestickChartInstance.applyOptions({
+                width: container.clientWidth
+            });
+        }
+    });
+    
+    // Fit content
+    chart.timeScale().fitContent();
+}
+
+// Switch between chart types
+window.switchChartType = function(type) {
+    const lineContainer = document.getElementById('lineChartContainer');
+    const candlestickContainer = document.getElementById('candlestickContainer');
+    const lineBtn = document.getElementById('lineChartBtn');
+    const candlestickBtn = document.getElementById('candlestickChartBtn');
+    
+    if (type === 'line') {
+        lineContainer.style.display = 'block';
+        candlestickContainer.style.display = 'none';
+        lineBtn.classList.add('active');
+        candlestickBtn.classList.remove('active');
+    } else {
+        lineContainer.style.display = 'none';
+        candlestickContainer.style.display = 'block';
+        lineBtn.classList.remove('active');
+        candlestickBtn.classList.add('active');
+        
+        // Resize candlestick chart when shown
+        if (candlestickChartInstance) {
+            candlestickChartInstance.applyOptions({
+                width: document.getElementById('candlestickContainer').clientWidth
+            });
+            candlestickChartInstance.timeScale().fitContent();
+        }
+    }
 }
 
 // Render prediction chart
