@@ -1045,6 +1045,7 @@ window.analyze = async function() {
     } finally {
         analyzeBtn.disabled = false;
         analyzeBtn.textContent = 'Analyze Stock';
+        handleManualRefresh(); // Reset auto-refresh timer if active
     }
 }
 
@@ -1138,12 +1139,9 @@ window.updateRefreshInterval = function() {
     console.log('Refresh interval updated to: ' + autoRefreshInterval + ' seconds');
 }
 
-// Stop auto-refresh when user manually analyzes
-const originalAnalyze = window.analyze;
-window.analyze = async function() {
-    // If this is a manual click (not auto-refresh), reset the timer
-    if (autoRefreshEnabled && !arguments[0]) {
-        startAutoRefresh(); // Reset the countdown
+// Auto-refresh integration
+function handleManualRefresh() {
+    if (autoRefreshEnabled) {
+        startAutoRefresh(); // Reset the countdown on manual click
     }
-    return originalAnalyze();
-};
+}
