@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Trading Assistant Demo</title>
+    <title>AI Trading Assistant</title>
     <style>
         * {
             margin: 0;
@@ -11,500 +11,751 @@
             box-sizing: border-box;
         }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --bg-cell: #1e2746;
+            --border-color: #2d3a5a;
+            --border-light: #3d4a6a;
+            --text-primary: #e4e6eb;
+            --text-secondary: #b0b3b8;
+            --text-muted: #6c7a94;
+            --accent-blue: #4a9eff;
+            --accent-green: #00d26a;
+            --accent-red: #ff4757;
+            --accent-yellow: #ffc107;
+            --accent-purple: #a855f7;
+            --tab-active: #2d4a7c;
+            --tab-hover: #253a5c;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Excel-style toolbar */
+        .toolbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .toolbar-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: var(--accent-blue);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border-color);
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar-label {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+
+        .toolbar select, .toolbar input {
+            background: var(--bg-cell);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+
+        .toolbar select:focus, .toolbar input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .toolbar-btn {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .toolbar-btn:hover {
+            background: #5aa8ff;
+        }
+
+        .toolbar-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toolbar-btn.secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+        }
+
+        .toolbar-btn.secondary:hover {
+            background: var(--tab-hover);
+        }
+
+        /* Main workspace */
+        .workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
         }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-
-        .content {
-            padding: 30px;
-        }
-
-        .controls {
+        /* Analytics tabs bar (Excel-style workbook tabs) */
+        .analytics-tabs-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
             display: flex;
-            gap: 15px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
             align-items: center;
+            padding: 0 8px;
+            min-height: 36px;
         }
 
-        .input-group {
+        .analytics-tabs {
+            display: flex;
+            gap: 2px;
+            overflow-x: auto;
             flex: 1;
-            min-width: 200px;
         }
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
-            font-weight: 600;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 1em;
-            transition: border-color 0.3s;
-        }
-
-        input:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 8px;
-            font-size: 1em;
-            font-weight: 600;
+        .analytics-tab {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            padding: 8px 16px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 28px;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .auto-refresh-controls {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            border: 2px solid #e0e0e0;
-        }
-
-        .refresh-status {
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            font-weight: 600;
-            color: #333;
+            gap: 8px;
+            border-radius: 6px 6px 0 0;
+            transition: all 0.2s;
+            white-space: nowrap;
         }
 
-        .refresh-status span:first-child {
+        .analytics-tab:hover {
+            background: var(--tab-hover);
+        }
+
+        .analytics-tab.active {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border-color: var(--accent-blue);
+            border-bottom: 1px solid var(--bg-primary);
+            margin-bottom: -1px;
+        }
+
+        .analytics-tab .close-tab {
             font-size: 1.1em;
+            opacity: 0.6;
+            padding: 0 2px;
         }
 
-        #countdown {
-            color: #667eea;
-            font-family: 'Courier New', monospace;
-            font-size: 1em;
+        .analytics-tab .close-tab:hover {
+            opacity: 1;
+            color: var(--accent-red);
         }
 
-        .refresh-buttons {
+        .analytics-tab .tab-signal {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .analytics-tab .tab-signal.bullish { background: var(--accent-green); }
+        .analytics-tab .tab-signal.bearish { background: var(--accent-red); }
+        .analytics-tab .tab-signal.neutral { background: var(--accent-yellow); }
+
+        .add-tab-btn {
+            background: transparent;
+            border: 1px dashed var(--border-color);
+            color: var(--text-muted);
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.2em;
             display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
             align-items: center;
+            justify-content: center;
+            margin-left: 8px;
         }
 
-        .secondary-btn {
-            background: white;
-            color: #667eea;
-            border: 2px solid #667eea;
-            padding: 10px 20px;
+        .add-tab-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr auto;
+            overflow: hidden;
+        }
+
+        /* Chart area (center focus) */
+        .chart-area {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Sub-tabs within analytics */
+        .sub-tabs {
+            background: var(--bg-secondary);
+            display: flex;
+            gap: 0;
+            padding: 0 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sub-tab {
+            padding: 12px 20px;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .sub-tab:hover {
+            color: var(--text-primary);
+            background: rgba(74, 158, 255, 0.1);
+        }
+
+        .sub-tab.active {
+            color: var(--accent-blue);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        /* Sub-tab content */
+        .sub-tab-content {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .sub-tab-panel {
+            display: none;
+            height: 100%;
+        }
+
+        .sub-tab-panel.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Chart container */
+        .chart-container {
+            flex: 1;
+            min-height: 400px;
+            background: var(--bg-cell);
             border-radius: 8px;
-            font-size: 0.95em;
-            font-weight: 600;
+            overflow: hidden;
+        }
+
+        #mainChart {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Chart type buttons */
+        .chart-type-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .chart-type-btn {
+            background: var(--bg-cell);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 0.85em;
             cursor: pointer;
             transition: all 0.2s;
         }
 
-        .secondary-btn:hover {
-            background: #667eea;
+        .chart-type-btn:hover {
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+        }
+
+        .chart-type-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
             color: white;
-            transform: translateY(-1px);
         }
 
-        .secondary-btn.active {
-            background: #10b981;
-            border-color: #10b981;
-            color: white;
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
-            font-weight: 700;
+        /* Metrics row */
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
         }
 
-        .secondary-btn.active:hover {
-            background: #059669;
-            border-color: #059669;
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
-        }
-
-        #refreshInterval {
-            flex: 1;
-            min-width: 150px;
-        }
-
-        .loading {
+        .metric-cell {
+            background: var(--bg-cell);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
             text-align: center;
-            padding: 40px;
-            color: #667eea;
+        }
+
+        .metric-value {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .metric-value.positive { color: var(--accent-green); }
+        .metric-value.negative { color: var(--accent-red); }
+
+        .metric-label {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* History panel */
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        .history-table th,
+        .history-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .history-table th {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+        }
+
+        .history-table tr:hover {
+            background: var(--bg-cell);
+        }
+
+        /* AI Decision panel */
+        .decision-card {
+            background: var(--bg-cell);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .decision-header {
+            background: var(--bg-secondary);
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .decision-direction {
+            font-size: 1.5em;
+            font-weight: 700;
+            padding: 8px 16px;
+            border-radius: 6px;
+        }
+
+        .decision-direction.bullish {
+            background: rgba(0, 210, 106, 0.2);
+            color: var(--accent-green);
+        }
+
+        .decision-direction.bearish {
+            background: rgba(255, 71, 87, 0.2);
+            color: var(--accent-red);
+        }
+
+        .decision-direction.neutral {
+            background: rgba(255, 193, 7, 0.2);
+            color: var(--accent-yellow);
+        }
+
+        .decision-confidence {
+            font-size: 1.3em;
+            color: var(--accent-purple);
+            font-weight: 600;
+        }
+
+        .decision-body {
+            padding: 16px;
+        }
+
+        .reason-item {
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--border-color);
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .reason-item.bullish { border-left-color: var(--accent-green); }
+        .reason-item.bearish { border-left-color: var(--accent-red); }
+        .reason-item.neutral { border-left-color: var(--accent-yellow); }
+
+        .reason-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .reason-indicator {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .reason-signal {
+            font-size: 0.85em;
+            padding: 2px 8px;
+            border-radius: 3px;
+            background: var(--bg-tertiary);
+        }
+
+        .reason-signal.bullish { color: var(--accent-green); }
+        .reason-signal.bearish { color: var(--accent-red); }
+        .reason-signal.neutral { color: var(--accent-yellow); }
+
+        .reason-description {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        /* Prediction panel */
+        .prediction-chart-container {
+            flex: 1;
+            min-height: 300px;
+            background: var(--bg-cell);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .prediction-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .prediction-card {
+            background: var(--bg-cell);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 16px;
+        }
+
+        .prediction-card h4 {
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            margin-bottom: 8px;
+        }
+
+        .prediction-card .value {
             font-size: 1.2em;
-            animation: pulse 2s ease-in-out infinite;
+            font-weight: 600;
+        }
+
+        /* Status bar */
+        .status-bar {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 6px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8em;
+            color: var(--text-muted);
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+        }
+
+        .status-indicator.loading {
+            background: var(--accent-yellow);
+            animation: pulse 1s ease-in-out infinite;
         }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Loading state */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(26, 26, 46, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
         }
 
         .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
+            width: 48px;
+            height: 48px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-blue);
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
             animation: spin 1s linear infinite;
-            margin: 20px auto;
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
         }
 
-        .prediction-card {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 30px;
-            border-left: 5px solid #667eea;
+        .loading-text {
+            margin-top: 16px;
+            color: var(--text-secondary);
         }
 
-        .prediction-header {
+        /* Empty state */
+        .empty-state {
+            flex: 1;
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
-            margin-bottom: 20px;
+            justify-content: center;
+            color: var(--text-muted);
+            padding: 40px;
         }
 
-        .direction {
-            font-size: 2em;
-            font-weight: bold;
-            padding: 10px 20px;
-            border-radius: 8px;
-            display: inline-block;
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 16px;
+            opacity: 0.5;
         }
 
-        .direction.up {
-            background: #d4edda;
-            color: #155724;
+        .empty-state-text {
+            font-size: 1.1em;
+            margin-bottom: 8px;
         }
 
-        .direction.down {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .direction.neutral {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .confidence {
-            font-size: 1.5em;
-            color: #667eea;
-            font-weight: bold;
-        }
-
-        .reasoning {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-        }
-
-        .reasoning h3 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 1.3em;
-        }
-
-        .reasoning-item {
-            padding: 12px;
-            margin: 10px 0;
-            background: #f8f9fa;
-            border-radius: 6px;
-            border-left: 3px solid #667eea;
-        }
-
-        .reasoning-item strong {
-            color: #667eea;
-        }
-
-        .chart-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .interactive-chart-container {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .chart-controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-
-        .chart-type-btn {
-            padding: 8px 16px;
-            border: 2px solid #e0e0e0;
-            background: white;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-
-        .chart-type-btn:hover {
-            border-color: #667eea;
-            color: #667eea;
-        }
-
-        .chart-type-btn.active {
-            background: #667eea;
-            border-color: #667eea;
-            color: white;
-        }
-
-        #interactiveChart {
-            height: 500px;
-            width: 100%;
-        }
-
-        .metrics {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .metric-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-
-        .metric-value {
-            font-size: 1.8em;
-            font-weight: bold;
-            color: #667eea;
-        }
-
-        .metric-label {
-            color: #666;
-            margin-top: 5px;
+        .empty-state-hint {
             font-size: 0.9em;
+            opacity: 0.7;
         }
 
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 5px solid #dc3545;
-        }
-
+        /* Disclaimer */
         .disclaimer {
-            background: #fff3cd;
-            color: #856404;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 20px;
-            font-size: 0.9em;
-        }
-
-        .chart-type-btn {
-            background: white;
-            color: #667eea;
-            border: 2px solid #667eea;
-            padding: 8px 16px;
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            color: var(--accent-yellow);
+            padding: 12px 16px;
+            font-size: 0.85em;
             border-radius: 6px;
-            font-size: 0.9em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            margin-left: 8px;
+            margin-top: 16px;
         }
 
-        .chart-type-btn:hover {
-            background: #f0f4ff;
+        /* Auto-refresh controls */
+        .auto-refresh-section {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .chart-type-btn.active {
-            background: #667eea;
+        .refresh-badge {
+            font-size: 0.75em;
+            padding: 2px 6px;
+            background: var(--accent-green);
             color: white;
+            border-radius: 3px;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--border-light);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .toolbar {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .toolbar-group {
+                flex-wrap: wrap;
+            }
+
+            .metrics-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>📈 AI Day Trading Assistant</h1>
-            <p>NASDAQ Intraday Analysis - 2-Minute to Hourly Predictions with Reasoning</p>
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-title">
+            <span>AI Trading Assistant</span>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-group">
+            <span class="toolbar-label">Stock:</span>
+            <select id="ticker">
+                <optgroup label="Tech Giants">
+                    <option value="AAPL" selected>AAPL - Apple</option>
+                    <option value="MSFT">MSFT - Microsoft</option>
+                    <option value="GOOGL">GOOGL - Google</option>
+                    <option value="AMZN">AMZN - Amazon</option>
+                    <option value="META">META - Meta</option>
+                    <option value="NVDA">NVDA - NVIDIA</option>
+                    <option value="TSLA">TSLA - Tesla</option>
+                </optgroup>
+                <optgroup label="High Volume">
+                    <option value="AMD">AMD - AMD</option>
+                    <option value="NFLX">NFLX - Netflix</option>
+                    <option value="INTC">INTC - Intel</option>
+                    <option value="ADBE">ADBE - Adobe</option>
+                    <option value="QCOM">QCOM - Qualcomm</option>
+                </optgroup>
+                <optgroup label="Volatile">
+                    <option value="COIN">COIN - Coinbase</option>
+                    <option value="ROKU">ROKU - Roku</option>
+                    <option value="SHOP">SHOP - Shopify</option>
+                    <option value="SQ">SQ - Block</option>
+                    <option value="UBER">UBER - Uber</option>
+                </optgroup>
+                <optgroup label="ETFs">
+                    <option value="QQQ">QQQ - NASDAQ-100</option>
+                    <option value="TQQQ">TQQQ - 3x Bull</option>
+                    <option value="SQQQ">SQQQ - 3x Bear</option>
+                </optgroup>
+            </select>
+        </div>
+        <div class="toolbar-group">
+            <span class="toolbar-label">Timeframe:</span>
+            <select id="timeframe">
+                <optgroup label="Intraday">
+                    <option value="1d|2m" selected>Today - 2 Min</option>
+                    <option value="1d|5m">Today - 5 Min</option>
+                    <option value="1d|15m">Today - 15 Min</option>
+                    <option value="5d|5m">5 Days - 5 Min</option>
+                    <option value="5d|15m">5 Days - 15 Min</option>
+                </optgroup>
+                <optgroup label="Swing">
+                    <option value="1mo|1d">1 Month - Daily</option>
+                    <option value="3mo|1d">3 Months - Daily</option>
+                    <option value="1y|1d">1 Year - Daily</option>
+                </optgroup>
+            </select>
+        </div>
+        <button id="analyzeBtn" class="toolbar-btn" onclick="addNewAnalysis()">+ New Analysis</button>
+        <div class="toolbar-divider"></div>
+        <div class="auto-refresh-section">
+            <button id="toggleAutoRefresh" class="toolbar-btn secondary" onclick="toggleAutoRefresh()">Auto-Refresh</button>
+            <select id="refreshInterval" onchange="updateRefreshInterval()">
+                <option value="30">30s</option>
+                <option value="60" selected>1m</option>
+                <option value="120">2m</option>
+                <option value="300">5m</option>
+            </select>
+            <span id="countdown" class="toolbar-label"></span>
+        </div>
+    </div>
+
+    <!-- Workspace -->
+    <div class="workspace">
+        <!-- Analytics tabs bar -->
+        <div class="analytics-tabs-bar">
+            <div class="analytics-tabs" id="analyticsTabs">
+                <!-- Tabs will be added dynamically -->
+            </div>
+            <button class="add-tab-btn" onclick="addNewAnalysis()" title="New Analysis">+</button>
         </div>
 
-        <div class="content">
-            <div class="controls">
-                <div class="input-group">
-                    <label for="ticker">NASDAQ Stock</label>
-                    <select id="ticker">
-                        <optgroup label="Tech Giants">
-                            <option value="AAPL" selected>AAPL - Apple</option>
-                            <option value="MSFT">MSFT - Microsoft</option>
-                            <option value="GOOGL">GOOGL - Google</option>
-                            <option value="AMZN">AMZN - Amazon</option>
-                            <option value="META">META - Meta (Facebook)</option>
-                            <option value="NVDA">NVDA - NVIDIA</option>
-                            <option value="TSLA">TSLA - Tesla</option>
-                        </optgroup>
-                        <optgroup label="High Volume Day Trading">
-                            <option value="AMD">AMD - Advanced Micro Devices</option>
-                            <option value="NFLX">NFLX - Netflix</option>
-                            <option value="INTC">INTC - Intel</option>
-                            <option value="CSCO">CSCO - Cisco</option>
-                            <option value="ADBE">ADBE - Adobe</option>
-                            <option value="AVGO">AVGO - Broadcom</option>
-                            <option value="QCOM">QCOM - Qualcomm</option>
-                            <option value="TXN">TXN - Texas Instruments</option>
-                        </optgroup>
-                        <optgroup label="Volatile/Day Trading Favorites">
-                            <option value="COIN">COIN - Coinbase</option>
-                            <option value="ROKU">ROKU - Roku</option>
-                            <option value="SHOP">SHOP - Shopify</option>
-                            <option value="SQ">SQ - Block (Square)</option>
-                            <option value="PYPL">PYPL - PayPal</option>
-                            <option value="SNAP">SNAP - Snap Inc</option>
-                            <option value="UBER">UBER - Uber</option>
-                            <option value="ABNB">ABNB - Airbnb</option>
-                        </optgroup>
-                        <optgroup label="Biotech/Pharma">
-                            <option value="MRNA">MRNA - Moderna</option>
-                            <option value="BNTX">BNTX - BioNTech</option>
-                            <option value="GILD">GILD - Gilead Sciences</option>
-                            <option value="VRTX">VRTX - Vertex Pharmaceuticals</option>
-                        </optgroup>
-                        <optgroup label="ETFs">
-                            <option value="QQQ">QQQ - NASDAQ-100 ETF</option>
-                            <option value="TQQQ">TQQQ - 3x NASDAQ Bull</option>
-                            <option value="SQQQ">SQQQ - 3x NASDAQ Bear</option>
-                        </optgroup>
-                        <optgroup label="Futures">
-                            <option value="NQ=F">NQ=F - NASDAQ-100 Futures</option>
-                        </optgroup>
-                    </select>
-                </div>
-                <div class="input-group">
-                    <label for="timeframe">Timeframe</label>
-                    <select id="timeframe">
-                        <optgroup label="Intraday (Day Trading)">
-                            <option value="1d|2m" selected>Today - 2 Min</option>
-                            <option value="1d|5m">Today - 5 Min</option>
-                            <option value="1d|15m">Today - 15 Min</option>
-                            <option value="5d|5m">5 Days - 5 Min</option>
-                            <option value="5d|15m">5 Days - 15 Min</option>
-                            <option value="1d|30m">Today - 30 Min</option>
-                            <option value="5d|30m">5 Days - 30 Min</option>
-                            <option value="1d|60m">Today - 1 Hour</option>
-                        </optgroup>
-                        <optgroup label="Swing Trading">
-                            <option value="1mo|1d">1 Month - Daily</option>
-                            <option value="3mo|1d">3 Months - Daily</option>
-                            <option value="6mo|1d">6 Months - Daily</option>
-                            <option value="1y|1d">1 Year - Daily</option>
-                        </optgroup>
-                    </select>
-                </div>
-                <button id="analyzeBtn" onclick="analyze()">Analyze Stock</button>
+        <!-- Main content -->
+        <div class="main-content" id="mainContent">
+            <div class="empty-state" id="emptyState">
+                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-text">No Analysis Open</div>
+                <div class="empty-state-hint">Select a stock and click "New Analysis" to begin</div>
             </div>
+        </div>
+    </div>
 
-            <div class="auto-refresh-controls">
-                <div class="refresh-status">
-                    <span id="refreshStatus">Auto-refresh: OFF</span>
-                    <span id="countdown"></span>
-                </div>
-                <div class="refresh-buttons">
-                    <button id="toggleAutoRefresh" onclick="toggleAutoRefresh()" class="secondary-btn">
-                        Enable Auto-Refresh
-                    </button>
-                    <button onclick="analyze()" class="secondary-btn">
-                        Refresh Now
-                    </button>
-                    <select id="refreshInterval" onchange="updateRefreshInterval()">
-                        <option value="30">Every 30 seconds</option>
-                        <option value="60" selected>Every 1 minute</option>
-                        <option value="120">Every 2 minutes</option>
-                        <option value="300">Every 5 minutes</option>
-                        <option value="600">Every 10 minutes</option>
-                    </select>
-                </div>
-            </div>
-
-            <div id="results"></div>
-
-            <div class="disclaimer">
-                <strong>⚠️ Educational Disclaimer:</strong> This is a demo for educational purposes only. 
-                This tool should NOT be used for actual trading decisions. Day trading is extremely risky 
-                and most day traders lose money. Always do your own research and consult with financial 
-                professionals before making investment decisions. Past performance does not guarantee future results.
-            </div>
+    <!-- Status bar -->
+    <div class="status-bar">
+        <div class="status-item">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">Ready</span>
+        </div>
+        <div class="status-item">
+            <span id="lastUpdate">-</span>
+        </div>
+        <div class="status-item">
+            <span>Educational Use Only - Not Financial Advice</span>
         </div>
     </div>
 
