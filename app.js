@@ -600,7 +600,19 @@ window.addNewAnalysis = async function() {
         history: [],
         chart: null,
         predictionChart: null,
-        currentSubTab: 'chart'
+        currentSubTab: 'chart',
+        simulatorState: {
+            isPlaying: false,
+            isPaused: false,
+            speed: 200, // ms per candle
+            currentIndex: 0,
+            startIndex: 20, // minimum data points needed for indicators
+            position: null, // { type: 'BUY'|'SELL', entryIndex, entryPrice }
+            trades: [], // completed trades
+            simChart: null,
+            playInterval: null,
+            isComplete: false
+        }
     };
 
     // Create and add tab element
@@ -789,12 +801,14 @@ function renderTabContent(tabId) {
                 <div class="sub-tab ${tab.currentSubTab === 'history' ? 'active' : ''}" onclick="switchSubTab('${tabId}', 'history')">History</div>
                 <div class="sub-tab ${tab.currentSubTab === 'decision' ? 'active' : ''}" onclick="switchSubTab('${tabId}', 'decision')">AI Decision</div>
                 <div class="sub-tab ${tab.currentSubTab === 'predictions' ? 'active' : ''}" onclick="switchSubTab('${tabId}', 'predictions')">Predictions</div>
+                <div class="sub-tab ${tab.currentSubTab === 'simulator' ? 'active' : ''}" onclick="switchSubTab('${tabId}', 'simulator')">Simulator</div>
             </div>
             <div class="sub-tab-content">
                 <div id="panel-chart" class="sub-tab-panel ${tab.currentSubTab === 'chart' ? 'active' : ''}"></div>
                 <div id="panel-history" class="sub-tab-panel ${tab.currentSubTab === 'history' ? 'active' : ''}"></div>
                 <div id="panel-decision" class="sub-tab-panel ${tab.currentSubTab === 'decision' ? 'active' : ''}"></div>
                 <div id="panel-predictions" class="sub-tab-panel ${tab.currentSubTab === 'predictions' ? 'active' : ''}"></div>
+                <div id="panel-simulator" class="sub-tab-panel ${tab.currentSubTab === 'simulator' ? 'active' : ''}"></div>
             </div>
         </div>
     `;
@@ -803,6 +817,7 @@ function renderTabContent(tabId) {
     renderHistoryPanel(tab);
     renderDecisionPanel(tab);
     renderPredictionsPanel(tab);
+    renderSimulatorPanel(tab);
 }
 
 window.switchSubTab = function(tabId, subTab) {
@@ -1273,6 +1288,737 @@ function renderPredictionChartCanvas(tab) {
             }
         }
     });
+}
+
+// ==================== LIVE TRADE SIMULATOR ====================
+function renderSimulatorPanel(tab) {
+    const panel = document.getElementById('panel-simulator');
+    if (!panel) return;
+
+    const sim = tab.simulatorState;
+    const dataLength = tab.data.length;
+
+    // Get current visible data
+    const visibleData = tab.data.slice(0, sim.currentIndex + 1);
+    const currentCandle = visibleData.length > 0 ? visibleData[visibleData.length - 1] : null;
+    const prevCandle = visibleData.length > 1 ? visibleData[visibleData.length - 2] : null;
+
+    // Calculate current indicators if we have enough data
+    let currentIndicators = null;
+    let currentPrediction = null;
+    if (visibleData.length >= 20) {
+        currentIndicators = calculateIndicators(visibleData);
+        currentPrediction = predictDirection(currentIndicators);
+    }
+
+    // Price change display
+    let priceChangeHTML = '';
+    if (currentCandle && prevCandle) {
+        const change = currentCandle.close - prevCandle.close;
+        const changePct = (change / prevCandle.close) * 100;
+        const changeClass = change >= 0 ? 'up' : 'down';
+        priceChangeHTML = `<span class="sim-price-change ${changeClass}">${change >= 0 ? '+' : ''}${changePct.toFixed(2)}%</span>`;
+    }
+
+    // Position P&L
+    let positionHTML = '';
+    if (sim.position) {
+        const currentPrice = currentCandle ? currentCandle.close : sim.position.entryPrice;
+        const pnl = sim.position.type === 'BUY'
+            ? ((currentPrice - sim.position.entryPrice) / sim.position.entryPrice) * 100
+            : ((sim.position.entryPrice - currentPrice) / sim.position.entryPrice) * 100;
+        const pnlClass = pnl >= 0 ? 'profit' : 'loss';
+        positionHTML = `
+            <div class="sim-open-position">
+                <div class="position-type">${sim.position.type} Position Open</div>
+                <div class="position-details">
+                    <span class="position-entry">Entry: $${sim.position.entryPrice.toFixed(2)}</span>
+                    <span class="position-pnl ${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Status badge
+    let statusBadge = '';
+    if (sim.isComplete) {
+        statusBadge = '<span class="sim-status-badge completed"><span class="dot"></span>Simulation Complete</span>';
+    } else if (sim.position) {
+        statusBadge = '<span class="sim-status-badge in-position"><span class="dot"></span>Position Open</span>';
+    } else if (sim.isPlaying) {
+        statusBadge = '<span class="sim-status-badge waiting"><span class="dot"></span>Watching Market...</span>';
+    }
+
+    // Progress
+    const progress = ((sim.currentIndex - sim.startIndex) / (dataLength - 1 - sim.startIndex)) * 100;
+
+    // Indicators mini display
+    let indicatorsHTML = '';
+    if (currentIndicators) {
+        const rsiClass = currentIndicators.rsi > 70 ? 'negative' : currentIndicators.rsi < 30 ? 'positive' : '';
+        const momentumClass = currentIndicators.momentum > 0 ? 'positive' : 'negative';
+        indicatorsHTML = `
+            <div class="sim-indicators-mini">
+                <div class="sim-indicator-mini">
+                    <div class="value ${rsiClass}">${currentIndicators.rsi.toFixed(1)}</div>
+                    <div class="label">RSI</div>
+                </div>
+                <div class="sim-indicator-mini">
+                    <div class="value ${momentumClass}">${currentIndicators.momentum > 0 ? '+' : ''}${currentIndicators.momentum.toFixed(2)}%</div>
+                    <div class="label">Momentum</div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Final results
+    let finalResultsHTML = '';
+    if (sim.isComplete && sim.trades.length > 0) {
+        finalResultsHTML = renderFinalResults(tab);
+    }
+
+    panel.innerHTML = `
+        <div class="sim-playback-controls">
+            <button class="sim-play-btn ${sim.isPlaying && !sim.isPaused ? 'playing' : ''}"
+                    id="sim-play-btn-${tab.id}"
+                    onclick="toggleSimPlayback('${tab.id}')"
+                    ${sim.isComplete ? 'disabled' : ''}>
+                ${sim.isPlaying && !sim.isPaused ? '⏸' : '▶'}
+            </button>
+            <button class="sim-reset-btn" onclick="resetSimulation('${tab.id}')">Reset</button>
+            <div class="sim-speed-control">
+                <label>Speed:</label>
+                <select id="sim-speed-${tab.id}" onchange="updateSimSpeed('${tab.id}', this.value)">
+                    <option value="500" ${sim.speed === 500 ? 'selected' : ''}>0.5x</option>
+                    <option value="200" ${sim.speed === 200 ? 'selected' : ''}>1x</option>
+                    <option value="100" ${sim.speed === 100 ? 'selected' : ''}>2x</option>
+                    <option value="50" ${sim.speed === 50 ? 'selected' : ''}>4x</option>
+                </select>
+            </div>
+            <div class="sim-progress">
+                <div class="sim-progress-bar">
+                    <div class="sim-progress-fill" id="sim-progress-${tab.id}" style="width: ${progress}%"></div>
+                </div>
+                <div class="sim-progress-text">
+                    <span>${currentCandle ? currentCandle.date.toLocaleString() : 'Ready to start'}</span>
+                    <span>${sim.currentIndex - sim.startIndex + 1} / ${dataLength - sim.startIndex}</span>
+                </div>
+            </div>
+            ${statusBadge}
+        </div>
+
+        <div class="sim-trading-panel">
+            <div class="sim-chart-area">
+                <div class="sim-chart-container" id="sim-chart-${tab.id}"></div>
+            </div>
+            <div class="sim-trade-panel">
+                <div class="sim-position-card">
+                    <h5>Current Price</h5>
+                    <div class="sim-price-display" id="sim-price-${tab.id}">
+                        ${currentCandle ? '$' + currentCandle.close.toFixed(2) : '--'}
+                    </div>
+                    ${priceChangeHTML}
+                </div>
+
+                ${indicatorsHTML}
+
+                <div class="sim-position-card" id="sim-position-display-${tab.id}">
+                    ${positionHTML}
+                </div>
+
+                <div class="sim-action-buttons" id="sim-actions-${tab.id}">
+                    ${sim.position ? `
+                        <button class="sim-action-btn close-position" onclick="closeSimPosition('${tab.id}')">
+                            CLOSE POSITION
+                        </button>
+                    ` : `
+                        <button class="sim-action-btn buy" onclick="openSimPosition('${tab.id}', 'BUY')"
+                                ${!sim.isPlaying || sim.isComplete ? 'disabled' : ''}>
+                            BUY
+                        </button>
+                        <button class="sim-action-btn sell" onclick="openSimPosition('${tab.id}', 'SELL')"
+                                ${!sim.isPlaying || sim.isComplete ? 'disabled' : ''}>
+                            SELL
+                        </button>
+                    `}
+                </div>
+            </div>
+        </div>
+
+        <div id="sim-results-${tab.id}">
+            ${finalResultsHTML}
+        </div>
+
+        <div class="disclaimer">
+            Watch the market unfold in real-time using historical data. Click BUY or SELL when you think the time is right, then close your position to lock in gains or cut losses. AI feedback provided after each trade.
+        </div>
+    `;
+
+    // Initialize or update chart
+    setTimeout(function() { initSimulatorChart(tab); }, 50);
+}
+
+function initSimulatorChart(tab) {
+    const container = document.getElementById('sim-chart-' + tab.id);
+    if (!container) return;
+
+    const sim = tab.simulatorState;
+
+    // Clear existing chart
+    if (sim.simChart) {
+        sim.simChart.remove();
+        sim.simChart = null;
+    }
+
+    // Create chart
+    sim.simChart = LightweightCharts.createChart(container, {
+        width: container.clientWidth,
+        height: container.clientHeight || 350,
+        layout: {
+            background: { color: '#1e2746' },
+            textColor: '#b0b3b8',
+        },
+        grid: {
+            vertLines: { color: '#2d3a5a' },
+            horzLines: { color: '#2d3a5a' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: '#2d3a5a',
+        },
+        timeScale: {
+            borderColor: '#2d3a5a',
+            timeVisible: true,
+            secondsVisible: false,
+        },
+    });
+
+    // Add candlestick series
+    sim.candleSeries = sim.simChart.addCandlestickSeries({
+        upColor: '#00d26a',
+        downColor: '#ff4757',
+        borderVisible: false,
+        wickUpColor: '#00d26a',
+        wickDownColor: '#ff4757',
+    });
+
+    // Add markers series for trades
+    sim.markerData = [];
+
+    // Update chart with current visible data
+    updateSimulatorChartData(tab);
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(function() {
+        if (sim.simChart && container.clientWidth > 0) {
+            sim.simChart.applyOptions({ width: container.clientWidth, height: container.clientHeight || 350 });
+        }
+    });
+    resizeObserver.observe(container);
+}
+
+function updateSimulatorChartData(tab) {
+    const sim = tab.simulatorState;
+    if (!sim.simChart || !sim.candleSeries) return;
+
+    const visibleData = tab.data.slice(0, sim.currentIndex + 1);
+
+    const candleData = visibleData.map(function(d) {
+        return {
+            time: d.date.getTime() / 1000,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close
+        };
+    });
+
+    sim.candleSeries.setData(candleData);
+
+    // Add trade markers
+    if (sim.markerData.length > 0) {
+        sim.candleSeries.setMarkers(sim.markerData);
+    }
+
+    sim.simChart.timeScale().fitContent();
+}
+
+window.toggleSimPlayback = function(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    const sim = tab.simulatorState;
+
+    if (sim.isComplete) return;
+
+    if (sim.isPlaying && !sim.isPaused) {
+        // Pause
+        sim.isPaused = true;
+        if (sim.playInterval) {
+            clearInterval(sim.playInterval);
+            sim.playInterval = null;
+        }
+        updatePlayButton(tabId);
+    } else {
+        // Play or resume
+        sim.isPlaying = true;
+        sim.isPaused = false;
+        startSimPlayback(tabId);
+        updatePlayButton(tabId);
+        updateActionButtons(tabId);
+    }
+}
+
+function startSimPlayback(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    const sim = tab.simulatorState;
+    const dataLength = tab.data.length;
+
+    sim.playInterval = setInterval(function() {
+        if (sim.currentIndex < dataLength - 1) {
+            sim.currentIndex++;
+            updateSimulatorDisplay(tab);
+        } else {
+            // End of data
+            clearInterval(sim.playInterval);
+            sim.playInterval = null;
+            sim.isComplete = true;
+
+            // Auto-close position if still open
+            if (sim.position) {
+                closeSimPosition(tabId);
+            } else {
+                renderSimulatorPanel(tab);
+            }
+        }
+    }, sim.speed);
+}
+
+function updateSimulatorDisplay(tab) {
+    const sim = tab.simulatorState;
+    const currentCandle = tab.data[sim.currentIndex];
+    const prevCandle = sim.currentIndex > 0 ? tab.data[sim.currentIndex - 1] : null;
+
+    // Update price display
+    const priceEl = document.getElementById('sim-price-' + tab.id);
+    if (priceEl) {
+        priceEl.textContent = '$' + currentCandle.close.toFixed(2);
+    }
+
+    // Update progress
+    const progressEl = document.getElementById('sim-progress-' + tab.id);
+    if (progressEl) {
+        const progress = ((sim.currentIndex - sim.startIndex) / (tab.data.length - 1 - sim.startIndex)) * 100;
+        progressEl.style.width = progress + '%';
+    }
+
+    // Update position P&L if we have one
+    if (sim.position) {
+        const posDisplay = document.getElementById('sim-position-display-' + tab.id);
+        if (posDisplay) {
+            const pnl = sim.position.type === 'BUY'
+                ? ((currentCandle.close - sim.position.entryPrice) / sim.position.entryPrice) * 100
+                : ((sim.position.entryPrice - currentCandle.close) / sim.position.entryPrice) * 100;
+            const pnlClass = pnl >= 0 ? 'profit' : 'loss';
+            posDisplay.innerHTML = `
+                <div class="sim-open-position">
+                    <div class="position-type">${sim.position.type} Position Open</div>
+                    <div class="position-details">
+                        <span class="position-entry">Entry: $${sim.position.entryPrice.toFixed(2)}</span>
+                        <span class="position-pnl ${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%</span>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    // Update chart
+    updateSimulatorChartData(tab);
+}
+
+function updatePlayButton(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    const btn = document.getElementById('sim-play-btn-' + tabId);
+    if (btn) {
+        const sim = tab.simulatorState;
+        btn.textContent = (sim.isPlaying && !sim.isPaused) ? '⏸' : '▶';
+        btn.classList.toggle('playing', sim.isPlaying && !sim.isPaused);
+    }
+}
+
+function updateActionButtons(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    const sim = tab.simulatorState;
+    const actionsDiv = document.getElementById('sim-actions-' + tabId);
+    if (!actionsDiv) return;
+
+    if (sim.position) {
+        actionsDiv.innerHTML = `
+            <button class="sim-action-btn close-position" onclick="closeSimPosition('${tabId}')">
+                CLOSE POSITION
+            </button>
+        `;
+    } else {
+        actionsDiv.innerHTML = `
+            <button class="sim-action-btn buy" onclick="openSimPosition('${tabId}', 'BUY')"
+                    ${!sim.isPlaying || sim.isComplete ? 'disabled' : ''}>
+                BUY
+            </button>
+            <button class="sim-action-btn sell" onclick="openSimPosition('${tabId}', 'SELL')"
+                    ${!sim.isPlaying || sim.isComplete ? 'disabled' : ''}>
+                SELL
+            </button>
+        `;
+    }
+}
+
+window.openSimPosition = function(tabId, type) {
+    const tab = analysisTabs[tabId];
+    if (!tab || tab.simulatorState.position) return;
+
+    const sim = tab.simulatorState;
+    const currentCandle = tab.data[sim.currentIndex];
+
+    // Calculate indicators at entry for later feedback
+    const visibleData = tab.data.slice(0, sim.currentIndex + 1);
+    const indicatorsAtEntry = visibleData.length >= 20 ? calculateIndicators(visibleData) : null;
+    const predictionAtEntry = indicatorsAtEntry ? predictDirection(indicatorsAtEntry) : null;
+
+    sim.position = {
+        type: type,
+        entryIndex: sim.currentIndex,
+        entryPrice: currentCandle.close,
+        entryDate: currentCandle.date,
+        indicatorsAtEntry: indicatorsAtEntry,
+        predictionAtEntry: predictionAtEntry
+    };
+
+    // Add marker to chart
+    sim.markerData.push({
+        time: currentCandle.date.getTime() / 1000,
+        position: type === 'BUY' ? 'belowBar' : 'aboveBar',
+        color: type === 'BUY' ? '#00d26a' : '#ff4757',
+        shape: type === 'BUY' ? 'arrowUp' : 'arrowDown',
+        text: type
+    });
+
+    updateSimulatorChartData(tab);
+    updateActionButtons(tabId);
+
+    // Update status
+    const posDisplay = document.getElementById('sim-position-display-' + tabId);
+    if (posDisplay) {
+        posDisplay.innerHTML = `
+            <div class="sim-open-position">
+                <div class="position-type">${type} Position Open</div>
+                <div class="position-details">
+                    <span class="position-entry">Entry: $${sim.position.entryPrice.toFixed(2)}</span>
+                    <span class="position-pnl profit">0.00%</span>
+                </div>
+            </div>
+        `;
+    }
+}
+
+window.closeSimPosition = function(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab || !tab.simulatorState.position) return;
+
+    const sim = tab.simulatorState;
+    const currentCandle = tab.data[sim.currentIndex];
+    const position = sim.position;
+
+    // Calculate P&L
+    const pnl = position.type === 'BUY'
+        ? ((currentCandle.close - position.entryPrice) / position.entryPrice) * 100
+        : ((position.entryPrice - currentCandle.close) / position.entryPrice) * 100;
+
+    // Calculate max drawdown and runup during the trade
+    const tradeData = tab.data.slice(position.entryIndex, sim.currentIndex + 1);
+    let maxPrice = position.entryPrice;
+    let minPrice = position.entryPrice;
+    tradeData.forEach(function(d) {
+        if (d.high > maxPrice) maxPrice = d.high;
+        if (d.low < minPrice) minPrice = d.low;
+    });
+
+    let maxDrawdown, maxRunup;
+    if (position.type === 'BUY') {
+        maxDrawdown = ((position.entryPrice - minPrice) / position.entryPrice) * 100;
+        maxRunup = ((maxPrice - position.entryPrice) / position.entryPrice) * 100;
+    } else {
+        maxDrawdown = ((maxPrice - position.entryPrice) / position.entryPrice) * 100;
+        maxRunup = ((position.entryPrice - minPrice) / position.entryPrice) * 100;
+    }
+
+    // Generate feedback
+    const feedback = generateAIFeedback(
+        position.type,
+        position.predictionAtEntry,
+        pnl,
+        pnl > 0,
+        position.indicatorsAtEntry,
+        maxDrawdown,
+        maxRunup
+    );
+
+    // Record completed trade
+    sim.trades.push({
+        type: position.type,
+        entryPrice: position.entryPrice,
+        entryDate: position.entryDate,
+        entryIndex: position.entryIndex,
+        exitPrice: currentCandle.close,
+        exitDate: currentCandle.date,
+        exitIndex: sim.currentIndex,
+        pnl: pnl,
+        maxDrawdown: maxDrawdown,
+        maxRunup: maxRunup,
+        periodsHeld: sim.currentIndex - position.entryIndex,
+        predictionAtEntry: position.predictionAtEntry,
+        indicatorsAtEntry: position.indicatorsAtEntry,
+        feedback: feedback
+    });
+
+    // Add exit marker
+    sim.markerData.push({
+        time: currentCandle.date.getTime() / 1000,
+        position: 'aboveBar',
+        color: '#a855f7',
+        shape: 'circle',
+        text: 'EXIT'
+    });
+
+    // Clear position
+    sim.position = null;
+
+    updateSimulatorChartData(tab);
+    updateActionButtons(tabId);
+
+    // Update position display
+    const posDisplay = document.getElementById('sim-position-display-' + tabId);
+    if (posDisplay) {
+        posDisplay.innerHTML = '';
+    }
+
+    // Show trade result immediately
+    const resultsDiv = document.getElementById('sim-results-' + tabId);
+    if (resultsDiv) {
+        resultsDiv.innerHTML = renderFinalResults(tab);
+    }
+}
+
+window.resetSimulation = function(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    const sim = tab.simulatorState;
+
+    // Stop playback
+    if (sim.playInterval) {
+        clearInterval(sim.playInterval);
+        sim.playInterval = null;
+    }
+
+    // Reset state
+    sim.isPlaying = false;
+    sim.isPaused = false;
+    sim.currentIndex = sim.startIndex;
+    sim.position = null;
+    sim.trades = [];
+    sim.markerData = [];
+    sim.isComplete = false;
+
+    // Re-render
+    renderSimulatorPanel(tab);
+}
+
+window.updateSimSpeed = function(tabId, speed) {
+    const tab = analysisTabs[tabId];
+    if (!tab) return;
+
+    tab.simulatorState.speed = parseInt(speed);
+
+    // If currently playing, restart with new speed
+    if (tab.simulatorState.isPlaying && !tab.simulatorState.isPaused) {
+        if (tab.simulatorState.playInterval) {
+            clearInterval(tab.simulatorState.playInterval);
+        }
+        startSimPlayback(tabId);
+    }
+}
+
+function generateAIFeedback(userAction, aiPrediction, profitLossPercent, isProfit, indicators, maxDrawdown, maxRunup) {
+    const feedback = {
+        verdict: '',
+        verdictClass: '',
+        summary: '',
+        details: [],
+        aiAgreed: false
+    };
+
+    if (!aiPrediction || !indicators) {
+        feedback.verdict = 'Insufficient Data';
+        feedback.verdictClass = 'mixed';
+        feedback.summary = 'Not enough historical data was available at entry to generate AI signals.';
+        return feedback;
+    }
+
+    // Determine if AI would have agreed with user's action
+    const aiRecommendedBuy = aiPrediction.direction.indexOf('BULLISH') !== -1;
+    const aiRecommendedSell = aiPrediction.direction.indexOf('BEARISH') !== -1;
+    const userBought = userAction === 'BUY';
+
+    feedback.aiAgreed = (userBought && aiRecommendedBuy) || (!userBought && aiRecommendedSell);
+
+    // Generate verdict based on outcome and AI agreement
+    if (isProfit) {
+        if (feedback.aiAgreed) {
+            feedback.verdict = 'Excellent Decision';
+            feedback.verdictClass = 'good';
+            feedback.summary = 'Your ' + userAction + ' decision was profitable and aligned with the AI\'s analysis at that time.';
+        } else {
+            feedback.verdict = 'Lucky Trade';
+            feedback.verdictClass = 'mixed';
+            feedback.summary = 'Your trade was profitable, but the AI\'s indicators suggested a different direction. Sometimes the market moves against technical signals.';
+        }
+    } else {
+        if (!feedback.aiAgreed) {
+            feedback.verdict = 'Against the Signals';
+            feedback.verdictClass = 'bad';
+            feedback.summary = 'This trade went against the AI\'s recommendation and resulted in a loss. The indicators were warning against this move.';
+        } else {
+            feedback.verdict = 'Market Surprise';
+            feedback.verdictClass = 'mixed';
+            feedback.summary = 'Despite aligning with the AI\'s analysis, this trade resulted in a loss. Technical analysis isn\'t always right.';
+        }
+    }
+
+    // Add specific indicator insights
+    if (indicators.rsi < 30) {
+        feedback.details.push('RSI was oversold (' + indicators.rsi.toFixed(1) + '), suggesting potential upward bounce.');
+    } else if (indicators.rsi > 70) {
+        feedback.details.push('RSI was overbought (' + indicators.rsi.toFixed(1) + '), suggesting potential downward correction.');
+    } else {
+        feedback.details.push('RSI was neutral at ' + indicators.rsi.toFixed(1) + '.');
+    }
+
+    if (indicators.currentPrice > indicators.sma20 && indicators.sma20 > indicators.sma50) {
+        feedback.details.push('Price was in an uptrend (above both moving averages).');
+    } else if (indicators.currentPrice < indicators.sma20 && indicators.sma20 < indicators.sma50) {
+        feedback.details.push('Price was in a downtrend (below both moving averages).');
+    } else {
+        feedback.details.push('Moving averages showed mixed signals with no clear trend.');
+    }
+
+    if (indicators.macdHistogram > 0) {
+        feedback.details.push('MACD histogram was positive, indicating bullish momentum.');
+    } else {
+        feedback.details.push('MACD histogram was negative, indicating bearish momentum.');
+    }
+
+    // Risk analysis
+    if (maxDrawdown > 5) {
+        feedback.details.push('This trade saw a max drawdown of ' + maxDrawdown.toFixed(1) + '%, which required patience to hold through.');
+    }
+
+    if (maxRunup > Math.abs(profitLossPercent) && isProfit) {
+        feedback.details.push('The position reached +' + maxRunup.toFixed(1) + '% before settling at ' + profitLossPercent.toFixed(2) + '%. Earlier exit could have improved returns.');
+    }
+
+    return feedback;
+}
+
+function renderFinalResults(tab) {
+    const sim = tab.simulatorState;
+    if (sim.trades.length === 0) return '';
+
+    // Calculate total P&L
+    const totalPnL = sim.trades.reduce(function(sum, trade) { return sum + trade.pnl; }, 0);
+    const winningTrades = sim.trades.filter(function(t) { return t.pnl > 0; }).length;
+    const winRate = (winningTrades / sim.trades.length) * 100;
+
+    let tradesHTML = sim.trades.map(function(trade, index) {
+        const pnlClass = trade.pnl >= 0 ? 'profit' : 'loss';
+        const actionClass = trade.type.toLowerCase();
+
+        const aiDirectionClass = trade.predictionAtEntry
+            ? (trade.predictionAtEntry.direction.indexOf('BULLISH') !== -1 ? 'bullish' :
+               trade.predictionAtEntry.direction.indexOf('BEARISH') !== -1 ? 'bearish' : 'neutral')
+            : 'neutral';
+
+        let detailsHTML = trade.feedback.details.map(function(detail) {
+            return '<p style="margin-bottom: 6px; font-size: 0.9em;">• ' + detail + '</p>';
+        }).join('');
+
+        return `
+            <div class="sim-trade-item" style="flex-direction: column; align-items: stretch;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="sim-trade-info">
+                        <span class="sim-trade-action ${actionClass}">Trade ${index + 1}: ${trade.type}</span>
+                        <span class="sim-trade-prices">$${trade.entryPrice.toFixed(2)} → $${trade.exitPrice.toFixed(2)} (${trade.periodsHeld} periods)</span>
+                    </div>
+                    <span class="sim-trade-result ${pnlClass}">${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}%</span>
+                </div>
+                <div class="ai-feedback" style="margin: 0;">
+                    <p style="margin-bottom: 8px;">
+                        <span class="feedback-verdict ${trade.feedback.verdictClass}">${trade.feedback.verdict}</span>
+                        ${trade.feedback.summary}
+                    </p>
+                    ${detailsHTML}
+                    ${trade.predictionAtEntry ? `
+                        <div class="ai-recommendation" style="margin-top: 10px;">
+                            <span class="ai-label">AI signal at entry:</span>
+                            <span class="ai-action ${aiDirectionClass}">${trade.predictionAtEntry.action}</span>
+                            <span style="color: var(--text-muted); font-size: 0.85em;">(${trade.predictionAtEntry.confidence}% confidence)</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const totalClass = totalPnL >= 0 ? 'profit' : 'loss';
+
+    return `
+        <div class="sim-final-results">
+            <div class="sim-final-header">
+                <h4>Trading Session Summary</h4>
+                <span class="result-outcome ${totalClass}">${totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}% Total</span>
+            </div>
+            <div class="sim-final-body">
+                <div class="result-metrics" style="margin-bottom: 16px;">
+                    <div class="result-metric">
+                        <div class="value">${sim.trades.length}</div>
+                        <div class="label">Trades</div>
+                    </div>
+                    <div class="result-metric">
+                        <div class="value positive">${winningTrades}</div>
+                        <div class="label">Winners</div>
+                    </div>
+                    <div class="result-metric">
+                        <div class="value negative">${sim.trades.length - winningTrades}</div>
+                        <div class="label">Losers</div>
+                    </div>
+                    <div class="result-metric">
+                        <div class="value">${winRate.toFixed(0)}%</div>
+                        <div class="label">Win Rate</div>
+                    </div>
+                </div>
+                <div class="sim-trades-list">
+                    ${tradesHTML}
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // ==================== AUTO-REFRESH ====================
