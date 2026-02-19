@@ -856,7 +856,11 @@ function renderChartPanel(tab) {
             <button class="chart-type-btn active" onclick="changeChartType('${tab.id}', 'candlestick')">Candlestick</button>
             <button class="chart-type-btn" onclick="changeChartType('${tab.id}', 'line')">Line</button>
             <button class="chart-type-btn" onclick="changeChartType('${tab.id}', 'area')">Area</button>
-            <span style="margin-left: auto; color: var(--text-muted); font-size: 0.85em;">Scroll to zoom | Drag to pan</span>
+            <span style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+                <button class="chart-type-btn" onclick="downloadCSV('${tab.id}')" style="font-size: 0.8em;">Download CSV</button>
+                <button class="chart-type-btn" onclick="downloadVAEJson('${tab.id}')" style="font-size: 0.8em; background: #22c55e; color: #fff; border-color: #22c55e;">Export VAE JSON</button>
+                <span style="color: var(--text-muted); font-size: 0.85em;">Scroll to zoom | Drag to pan</span>
+            </span>
         </div>
         <div class="chart-container">
             <div id="mainChart-${tab.id}" style="width: 100%; height: 100%;"></div>
@@ -2020,6 +2024,67 @@ function renderFinalResults(tab) {
         </div>
     `;
 }
+
+// ==================== EXPORT VAE JSON ====================
+window.downloadCSV = function(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab || !tab.data) return;
+
+    const header = 'Date,Open,High,Low,Close,Volume';
+    const rows = tab.data.map(function(d) {
+        return [
+            d.date.toISOString().split('T')[0],
+            d.open, d.high, d.low, d.close, d.volume
+        ].join(',');
+    });
+
+    const csv = [header].concat(rows).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = tab.ticker + '_' + tab.range + '_' + tab.interval + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+};
+
+window.downloadVAEJson = function(tabId) {
+    const tab = analysisTabs[tabId];
+    if (!tab || !tab.data) return;
+
+    if (tab.timeframe !== '2y|1d') {
+        if (!confirm('The current timeframe is not 2 Years - Daily (2y|1d). VAE models typically expect this timeframe for best results.\n\nExport anyway?')) {
+            return;
+        }
+    }
+
+    const exportData = {
+        ticker: tab.ticker,
+        range: tab.range,
+        interval: tab.interval,
+        exported_at: new Date().toISOString(),
+        data_points: tab.data.length,
+        data: tab.data.map(function(d) {
+            return {
+                date: d.date.toISOString().split('T')[0],
+                open: d.open,
+                high: d.high,
+                low: d.low,
+                close: d.close,
+                volume: d.volume
+            };
+        })
+    };
+
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = tab.ticker + '_VAE_' + tab.range + '_' + tab.interval + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+};
 
 // ==================== AUTO-REFRESH ====================
 let autoRefreshEnabled = false;
