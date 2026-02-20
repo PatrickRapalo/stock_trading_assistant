@@ -374,14 +374,14 @@ window.VAE = (function () {
             await tf.ready();
 
             try {
-                _model = await tf.loadGraphModel('/vae/tfjs_encoder/model.json');
+                _model = await tf.loadGraphModel('./vae/tfjs_encoder/model.json');
             } catch (e) {
                 throw new Error('Model failed to load: ' + e.message);
             }
 
             const [scalerRes, configRes] = await Promise.all([
-                fetch('/vae/scaler_params.json'),
-                fetch('/vae/vae_config.json')
+                fetch('./vae/scaler_params.json'),
+                fetch('./vae/vae_config.json')
             ]);
             if (!scalerRes.ok) throw new Error('scaler_params.json not found (' + scalerRes.status + ')');
             if (!configRes.ok) throw new Error('vae_config.json not found (' + configRes.status + ')');
