@@ -373,7 +373,11 @@ window.VAE = (function () {
             await tf.setBackend('cpu');
             await tf.ready();
 
-            _model = await tf.loadGraphModel('/vae/tfjs_encoder/model.json');
+            try {
+                _model = await tf.loadGraphModel('/vae/tfjs_encoder/model.json');
+            } catch (e) {
+                throw new Error('Model failed to load: ' + e.message);
+            }
 
             const [scalerRes, configRes] = await Promise.all([
                 fetch('/vae/scaler_params.json'),
