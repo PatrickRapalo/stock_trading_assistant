@@ -288,7 +288,7 @@ const tradingRules = {
     }
 };
 
-function predictDirection(indicators) {
+function predictDirection(indicators, vaeResult) {
     let score = 0;
     const reasons = [];
     let confirmations = 0;
@@ -516,6 +516,20 @@ function predictDirection(indicators) {
         confidence = 40;
     }
 
+    // VAE confidence scaling — applied after base confidence is computed
+    // so that anomalous market states reduce confidence and optionally raise a warning.
+    if (vaeResult) {
+        confidence = confidence * vaeResult.confidence;
+        if (vaeResult.isAnomaly) {
+            reasons.push({
+                indicator: 'VAE Anomaly Detector',
+                signal: 'WARNING',
+                weight: 0,
+                description: 'Current market state is outside normal historical patterns for this ticker. Confidence reduced.'
+            });
+        }
+    }
+
     let action = 'HOLD';
     if (direction === 'BULLISH' && confidence > 70) action = 'STRONG BUY';
     else if (direction === 'BULLISH') action = 'BUY';
@@ -533,7 +547,7 @@ function predictDirection(indicators) {
 }
 
 // ==================== PRICE PREDICTIONS ====================
-function generatePricePredictions(indicators, numPeriods) {
+function generatePricePredictions(indicators, numPeriods, vaeResult) {
     const predictions = [];
     const currentPrice = indicators.currentPrice;
 
@@ -563,7 +577,9 @@ function generatePricePredictions(indicators, numPeriods) {
         price = price * (1 + adjustment);
 
         const volatility = Math.abs(indicators.currentPrice - indicators.sma20) / indicators.sma20;
-        const confidenceRange = price * volatility * i * 0.3;
+        const confidenceRange = vaeResult
+            ? price * vaeResult.reconError * i * (1 + (1 - vaeResult.confidence))
+            : price * volatility * i * 0.3;
 
         predictions.push({
             period: i,
@@ -687,6 +703,30 @@ window.closeTab = function(tabId) {
     }
 }
 
+// ==================== VAE CALIBRATION ====================
+async function calibrateVAE(tab) {
+    tab.vaeResult = null;
+    try {
+        if (!window.VAE || !window.VAE.ready) return;
+
+        const allWindows = window.VAE.buildWindows(tab.data);
+        const calibResult = await window.VAE.calibrate(allWindows);
+        const scoreResult = await window.VAE.score(allWindows[allWindows.length - 1]);
+
+        tab.vaeResult = {
+            reconError:  scoreResult.reconError,
+            confidence:  scoreResult.confidence,
+            isAnomaly:   scoreResult.isAnomaly,
+            threshold:   scoreResult.threshold,
+            windowCount: calibResult.windowCount,
+            isReliable:  calibResult.isReliable
+        };
+    } catch (err) {
+        console.warn('[VAE] calibrateVAE failed silently:', err.message);
+        tab.vaeResult = null;
+    }
+}
+
 async function refreshTabData(tabId) {
     const tab = analysisTabs[tabId];
     if (!tab) return;
@@ -701,7 +741,11 @@ async function refreshTabData(tabId) {
         }
 
         tab.indicators = calculateIndicators(tab.data);
-        tab.prediction = predictDirection(tab.indicators);
+
+        setStatus('loading', 'Calibrating VAE...');
+        await calibrateVAE(tab);
+
+        tab.prediction = predictDirection(tab.indicators, tab.vaeResult);
 
         // Add to history
         tab.history.unshift({
@@ -1137,6 +1181,31 @@ function renderDecisionPanel(tab) {
         `;
     }).join('');
 
+    // VAE status badge — shown only when VAE calibration succeeded
+    let vaeBadgeHTML = '';
+    if (tab.vaeResult) {
+        const vr = tab.vaeResult;
+        const anomalyColor = vr.isAnomaly ? 'var(--accent-red)' : 'var(--accent-green)';
+        const anomalyLabel = vr.isAnomaly ? 'ANOMALY DETECTED' : 'Normal';
+        const reliabilityWarning = !vr.isReliable
+            ? `<div style="color: var(--accent-yellow); margin-top: 8px; font-size: 0.85em;">
+                   &#9888; Calibrated on fewer than 200 windows — less reliable on short timeframes.
+               </div>`
+            : '';
+        vaeBadgeHTML = `
+            <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-left: 3px solid var(--accent-purple); border-radius: 0 6px 6px 0; padding: 12px 16px; margin-bottom: 16px;">
+                <div style="font-size: 0.8em; color: var(--accent-purple); font-weight: 600; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase;">VAE Anomaly Detector</div>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.88em;">
+                    <span style="color: var(--text-secondary);">Recon error: <strong style="color: var(--text-primary);">${vr.reconError.toFixed(4)}</strong></span>
+                    <span style="color: var(--text-secondary);">Confidence: <strong style="color: var(--accent-purple);">${(vr.confidence * 100).toFixed(1)}%</strong></span>
+                    <span style="color: var(--text-secondary);">Status: <strong style="color: ${anomalyColor};">${anomalyLabel}</strong></span>
+                    <span style="color: var(--text-secondary);">Windows: <strong style="color: var(--text-primary);">${vr.windowCount}</strong></span>
+                </div>
+                ${reliabilityWarning}
+            </div>
+        `;
+    }
+
     panel.innerHTML = `
         <div class="decision-card">
             <div class="decision-header">
@@ -1154,6 +1223,7 @@ function renderDecisionPanel(tab) {
                     <span style="font-weight: 600; color: var(--accent-blue);">Recommendation: ${p.action}</span>
                     <span style="color: var(--text-muted); margin-left: 12px;">Score: ${p.score.toFixed(1)} | ${p.confirmations} confirmations</span>
                 </div>
+                ${vaeBadgeHTML}
                 <h4 style="margin-bottom: 12px; color: var(--text-secondary);">Indicator Analysis</h4>
                 ${reasonsHTML}
             </div>
@@ -1166,7 +1236,7 @@ function renderDecisionPanel(tab) {
 
 function renderPredictionsPanel(tab) {
     const panel = document.getElementById('panel-predictions');
-    const predictions = generatePricePredictions(tab.indicators, 10);
+    const predictions = generatePricePredictions(tab.indicators, 10, tab.vaeResult);
 
     const lastPred = predictions[predictions.length - 1];
     const pctChange = ((lastPred.price - tab.indicators.currentPrice) / tab.indicators.currentPrice * 100);
@@ -1206,7 +1276,7 @@ function renderPredictionChartCanvas(tab) {
     const canvas = document.getElementById('predChart-' + tab.id);
     if (!canvas) return;
 
-    const predictions = generatePricePredictions(tab.indicators, 10);
+    const predictions = generatePricePredictions(tab.indicators, 10, tab.vaeResult);
 
     const labels = ['Now'];
     const predictedPrices = [tab.indicators.currentPrice];

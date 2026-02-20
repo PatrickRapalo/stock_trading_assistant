@@ -1,0 +1,9 @@
+{
+  "threshold": 0.01565396413207054,
+  "window_size": 20,
+  "latent_dim": 8,
+  "trained_on": [
+    "QQQ"
+  ],
+  "trained_date": "2026-02-20"
+}
